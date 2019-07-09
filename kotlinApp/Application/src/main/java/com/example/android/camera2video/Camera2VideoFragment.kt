@@ -53,6 +53,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.Toast
 import android.widget.Toast.LENGTH_SHORT
+import com.github.jeehwan.MediaStreamer
 import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.Semaphore
@@ -192,7 +193,7 @@ class Camera2VideoFragment : Fragment(), View.OnClickListener,
      */
     private var nextVideoAbsolutePath: String? = null
 
-    private var mediaRecorder: MediaRecorder? = null
+    private var mediaStreamer: MediaStreamer? = null
 
     override fun onCreateView(inflater: LayoutInflater,
                               container: ViewGroup?,
@@ -350,7 +351,7 @@ class Camera2VideoFragment : Fragment(), View.OnClickListener,
                 textureView.setAspectRatio(previewSize.height, previewSize.width)
             }
             configureTransform(width, height)
-            mediaRecorder = MediaRecorder()
+            mediaStreamer = MediaStreamer()
             manager.openCamera(cameraId, stateCallback, null)
         } catch (e: CameraAccessException) {
             showToast("Cannot access the camera.")
@@ -374,8 +375,8 @@ class Camera2VideoFragment : Fragment(), View.OnClickListener,
             closePreviewSession()
             cameraDevice?.close()
             cameraDevice = null
-            mediaRecorder?.release()
-            mediaRecorder = null
+            mediaStreamer?.release()
+            mediaStreamer = null
         } catch (e: InterruptedException) {
             throw RuntimeException("Interrupted while trying to lock camera closing.", e)
         } finally {
@@ -479,21 +480,16 @@ class Camera2VideoFragment : Fragment(), View.OnClickListener,
         val rotation = cameraActivity.windowManager.defaultDisplay.rotation
         when (sensorOrientation) {
             SENSOR_ORIENTATION_DEFAULT_DEGREES ->
-                mediaRecorder?.setOrientationHint(DEFAULT_ORIENTATIONS.get(rotation))
+                mediaStreamer?.setOrientationHint(DEFAULT_ORIENTATIONS.get(rotation))
             SENSOR_ORIENTATION_INVERSE_DEGREES ->
-                mediaRecorder?.setOrientationHint(INVERSE_ORIENTATIONS.get(rotation))
+                mediaStreamer?.setOrientationHint(INVERSE_ORIENTATIONS.get(rotation))
         }
 
-        mediaRecorder?.apply {
-            setAudioSource(MediaRecorder.AudioSource.MIC)
-            setVideoSource(MediaRecorder.VideoSource.SURFACE)
-            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-            setOutputFile(nextVideoAbsolutePath)
-            setVideoEncodingBitRate(10000000)
-            setVideoFrameRate(30)
+        mediaStreamer?.apply {
             setVideoSize(videoSize.width, videoSize.height)
-            setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-            setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            setVideoFrameRate(30)
+            setVideoEncodingBitrate(2_000_000)
+            setUrl("rtmp://a.rtmp.youtube.com/live2/08vf-ew5g-4b92-6atv")
             prepare()
         }
     }
@@ -521,7 +517,7 @@ class Camera2VideoFragment : Fragment(), View.OnClickListener,
 
             // Set up Surface for camera preview and MediaRecorder
             val previewSurface = Surface(texture)
-            val recorderSurface = mediaRecorder!!.surface
+            val recorderSurface = mediaStreamer!!.getSurface()
             val surfaces = ArrayList<Surface>().apply {
                 add(previewSurface)
                 add(recorderSurface)
@@ -542,7 +538,7 @@ class Camera2VideoFragment : Fragment(), View.OnClickListener,
                     activity?.runOnUiThread {
                         videoButton.setText(R.string.stop)
                         isRecordingVideo = true
-                        mediaRecorder?.start()
+                        mediaStreamer?.start()
                     }
                 }
 
@@ -566,7 +562,7 @@ class Camera2VideoFragment : Fragment(), View.OnClickListener,
     private fun stopRecordingVideo() {
         isRecordingVideo = false
         videoButton.setText(R.string.record)
-        mediaRecorder?.apply {
+        mediaStreamer?.apply {
             stop()
             reset()
         }
